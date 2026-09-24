@@ -170,6 +170,7 @@ export const supplierShowcases = [
     shortName: '华智装备',
     mark: 'HZ',
     tone: 'blue',
+    logo: '/images/company-logos/huadong-intelligent.png',
     products: [
       { name: '数控线缆剥线机 工业自动化设备', price: '¥ 3,980', image: '/images/product-touch-panel.png' },
       { name: '智能包装封口机 支持按需定制', price: '¥ 2,680', image: '/images/market-equipment-banner.png' },
@@ -182,6 +183,7 @@ export const supplierShowcases = [
     shortName: '冀中环保',
     mark: 'JZ',
     tone: 'green',
+    logo: '/images/company-logos/jizhong-environment.png',
     products: [
       { name: '快速反冲洗过滤器 不锈钢立式', price: '¥ 600', image: '/images/market-equipment-banner.png' },
       { name: '全自动定压补水机组 节能稳定', price: '¥ 3,500', image: '/images/smart-manufacturing.png' },
@@ -194,6 +196,7 @@ export const supplierShowcases = [
     shortName: '华杰线缆',
     mark: 'HJ',
     tone: 'orange',
+    logo: '/images/company-logos/huajie-cable.png',
     products: [
       { name: '矿山工程专用防爆作业箱', price: '¥ 800', image: '/images/factory-direct.png' },
       { name: '双股爆破线 放炮线 数码雷管线', price: '¥ 45', image: '/images/factory-direct-text-banner.png' },
@@ -206,6 +209,7 @@ export const supplierShowcases = [
     shortName: '凯龙矿机',
     mark: 'KL',
     tone: 'teal',
+    logo: '/images/company-logos/kailong-mining.png',
     products: [
       { name: '隧道施工用车载炸药柜', price: '¥ 98', image: '/images/industry-solution.png' },
       { name: '矿山民爆物品存储防火柜', price: '¥ 320', image: '/images/market-building-banner.png' },
@@ -218,6 +222,7 @@ export const supplierShowcases = [
     shortName: '华测仪表',
     mark: 'HC',
     tone: 'blue',
+    logo: '/images/company-logos/huace-instruments.png',
     products: [
       { name: '工业触控一体机 多尺寸可选', price: '¥ 1,280', image: '/images/product-touch-panel.png' },
       { name: '车间数据采集终端 稳定运行', price: '¥ 2,380', image: '/images/smart-manufacturing.png' },

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title id="title">力科五金</title><rect width="160" height="160" rx="32" fill="#355cc9"/>
+  <path d="m48 47 17 17-24 24 31 31 24-24 17 17-31 31c-7 7-18 7-25 0L17 103c-7-7-7-18 0-25l31-31Z" fill="#fff"/>
+  <circle cx="111" cy="49" r="17" fill="none" stroke="#fff" stroke-width="9"/>
+  <text x="80" y="145" text-anchor="middle" fill="#fff" font-family="Arial, PingFang SC, sans-serif" font-size="18" font-weight="700">力科五金</text>
+</svg>

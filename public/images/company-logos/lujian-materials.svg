@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title id="title">鲁建新材</title>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e7812c"/><stop offset="1" stop-color="#b84e18"/></linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="32" fill="url(#g)"/>
+  <path d="M31 103 80 44l49 59h-18L80 66l-31 37H31Z" fill="#fff" opacity=".96"/>
+  <path d="M57 104h46v18H57z" fill="#fff" opacity=".96"/>
+  <text x="80" y="141" text-anchor="middle" fill="#fff" font-family="Arial, PingFang SC, sans-serif" font-size="18" font-weight="700">鲁建新材</text>
+</svg>
