@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import BaseIcon from './components/BaseIcon.vue'
 import {
   catalogFilters,
@@ -19,6 +19,11 @@ const selectedSpec = ref('标准配置')
 const purchaseQuantity = ref(1)
 const storeSearchTerm = ref('')
 const recommendationOffset = ref(0)
+const featuredProductOffset = ref(0)
+const featuredVisibleCount = ref(window.innerWidth <= 599 ? 2 : window.innerWidth <= 899 ? 3 : 4)
+const featuredCarouselDirection = ref('next')
+const featuredCarouselAnimating = ref(false)
+let featuredCarouselTimer
 const activeCatalogSort = ref('综合排序')
 const activeCatalogFilters = ref({})
 const quoteDialogOpen = ref(false)
@@ -153,11 +158,15 @@ const updateRoute = () => {
 
 onMounted(() => {
   window.addEventListener('hashchange', updateRoute)
+  window.addEventListener('resize', updateFeaturedVisibleCount)
+  startFeaturedProductCarousel()
   void loadHome().then(loadRouteData)
 })
 
 onUnmounted(() => {
   window.removeEventListener('hashchange', updateRoute)
+  window.removeEventListener('resize', updateFeaturedVisibleCount)
+  window.clearInterval(featuredCarouselTimer)
 })
 
 const currentCategory = computed(() => {
@@ -172,7 +181,27 @@ const isCompanyPage = computed(() => routeHash.value.startsWith('#/company'))
 
 const categoryNames = computed(() => categories.value.map((item) => item.name))
 const supplierShowcaseCategories = computed(() => [...new Set(supplierShowcases.value.map((supplier) => supplier.category).filter(Boolean))])
-const products = computed(() => catalogProducts.value.slice(0, 6))
+const featuredCarouselProducts = computed(() => {
+  const total = catalogProducts.value.length
+  if (!total) return []
+  const count = Math.min(featuredVisibleCount.value, total)
+  const start = featuredCarouselDirection.value === 'previous'
+    ? featuredProductOffset.value - 1
+    : featuredProductOffset.value
+  const length = total > count ? count + 1 : count
+  return Array.from({ length }, (_, index) => catalogProducts.value[(start + index + total) % total])
+})
+const featuredTrackStyle = computed(() => {
+  const count = featuredVisibleCount.value
+  const gap = count === 2 ? 10 : 14
+  const step = `calc(-${100 / count}% - ${gap / count}px)`
+  const movesLeft = featuredCarouselDirection.value === 'next' && featuredCarouselAnimating.value
+  const restsAfterPrevious = featuredCarouselDirection.value === 'previous' && !featuredCarouselAnimating.value
+  return {
+    gridAutoColumns: `calc(${100 / count}% - ${((count - 1) * gap) / count}px)`,
+    transform: movesLeft || restsAfterPrevious ? `translateX(${step})` : 'translateX(0)',
+  }
+})
 
 const detailProduct = computed(() => selectedProduct.value || catalogProducts.value[0] || emptyProduct)
 
@@ -228,6 +257,34 @@ const openCatalog = (category = '机械设备') => {
 }
 const cycleRecommendations = () => {
   if (catalogProducts.value.length) recommendationOffset.value = (recommendationOffset.value + 4) % catalogProducts.value.length
+}
+const updateFeaturedVisibleCount = () => {
+  featuredVisibleCount.value = window.innerWidth <= 599 ? 2 : window.innerWidth <= 899 ? 3 : 4
+  featuredProductOffset.value %= Math.max(1, catalogProducts.value.length)
+}
+const canSlideFeaturedProducts = () => catalogProducts.value.length > featuredVisibleCount.value && !featuredCarouselAnimating.value
+const showPreviousFeaturedProduct = async () => {
+  if (!canSlideFeaturedProducts()) return
+  featuredCarouselDirection.value = 'previous'
+  await nextTick()
+  featuredCarouselAnimating.value = true
+}
+const showNextFeaturedProduct = () => {
+  if (!canSlideFeaturedProducts()) return
+  featuredCarouselDirection.value = 'next'
+  featuredCarouselAnimating.value = true
+}
+const finishFeaturedProductSlide = (event) => {
+  if (event.propertyName !== 'transform' || !featuredCarouselAnimating.value) return
+  const total = catalogProducts.value.length
+  featuredProductOffset.value = featuredCarouselDirection.value === 'next'
+    ? (featuredProductOffset.value + 1) % total
+    : (featuredProductOffset.value - 1 + total) % total
+  featuredCarouselDirection.value = 'next'
+  featuredCarouselAnimating.value = false
+}
+const startFeaturedProductCarousel = () => {
+  featuredCarouselTimer = window.setInterval(showNextFeaturedProduct, 5000)
 }
 const selectCatalogFilter = (label, value) => {
   activeCatalogFilters.value = { ...activeCatalogFilters.value, [label]: value }
@@ -299,7 +356,7 @@ const visibleSupplierShowcases = computed(() => {
   const matches = supplierShowcases.value.filter((supplier) => supplier.category === activeSupplierCategory.value)
   const defaultSuppliers = supplierShowcases.value.filter((supplier) => supplier.category === supplierShowcaseCategories.value[0])
   const supplements = defaultSuppliers.filter((supplier) => !matches.some((match) => match.name === supplier.name))
-  return [...matches, ...supplements].slice(0, 4)
+  return [...matches, ...supplements]
 })
 
 const premiumCatalogProducts = computed(() => catalogProducts.value.slice(0, 6))
@@ -569,20 +626,24 @@ const marketSections = computed(() => [
           </div>
 
           <div class="product-row">
-            <button class="round-arrow left" aria-label="上一组"><BaseIcon name="arrowRight" /></button>
-            <article v-for="product in products" :key="product.name" class="product-card" role="link" tabindex="0" @click="openProduct(product)" @keydown.enter="openProduct(product)">
-              <div class="product-image" :class="`scene-${product.scene}`">
-                <img :src="product.image" :alt="product.name" @error="$event.target.style.display = 'none'" />
-                <BaseIcon :name="product.icon" />
+            <button class="round-arrow left" aria-label="上一组" :disabled="catalogProducts.length <= featuredVisibleCount || featuredCarouselAnimating" @click="showPreviousFeaturedProduct"><BaseIcon name="arrowRight" /></button>
+            <div class="product-carousel-viewport">
+              <div class="product-card-track" :class="{ moving: featuredCarouselAnimating }" :style="featuredTrackStyle" @transitionend="finishFeaturedProductSlide">
+                <article v-for="(product, index) in featuredCarouselProducts" :key="`${product.id}-${index}`" class="product-card" role="link" tabindex="0" @click="openProduct(product)" @keydown.enter="openProduct(product)">
+                  <div class="product-image" :class="`scene-${product.scene}`">
+                    <img :src="product.image" :alt="product.name" @error="$event.target.style.display = 'none'" />
+                    <BaseIcon :name="product.icon" />
+                  </div>
+                  <strong>{{ product.name }}</strong>
+                  <small>{{ product.tag }}</small>
+                  <div class="product-foot">
+                    <span class="price">{{ product.price }}</span>
+                    <button type="button" @click.stop="openQuoteDialog">立即询价</button>
+                  </div>
+                </article>
               </div>
-              <strong>{{ product.name }}</strong>
-              <small>{{ product.tag }}</small>
-              <div class="product-foot">
-                <span class="price">{{ product.price }}</span>
-                <button type="button" @click.stop="openQuoteDialog">立即询价</button>
-              </div>
-            </article>
-            <button class="round-arrow right" aria-label="下一组"><BaseIcon name="arrowRight" /></button>
+            </div>
+            <button class="round-arrow right" aria-label="下一组" :disabled="catalogProducts.length <= featuredVisibleCount || featuredCarouselAnimating" @click="showNextFeaturedProduct"><BaseIcon name="arrowRight" /></button>
           </div>
         </section>
 
@@ -628,7 +689,6 @@ const marketSections = computed(() => [
             <h2>优选厂商</h2>
             <p>实力工厂与行业优选</p>
           </div>
-          <a href="#/catalog?category=机械设备">查看全部<BaseIcon name="arrowRight" /></a>
         </div>
         <div class="supplier-tabs" role="tablist" aria-label="优选厂商品类">
           <button
@@ -726,7 +786,7 @@ const marketSections = computed(() => [
                   </a>
                 </div>
               </div>
-              <img :src="section.products[0].image" :alt="section.title" />
+              <img v-if="section.products[0]" :src="section.products[0].image" :alt="section.title" />
             </div>
             <div class="market-products">
               <a v-for="product in section.products" :key="`${section.title}-${product.name}`" :href="productDetailHref(product)">
@@ -755,7 +815,7 @@ const marketSections = computed(() => [
             </a>
             <h3>{{ product.name }}</h3>
             <div class="recommend-tags">
-              <span v-for="tag in product.serviceTags" :key="`${product.name}-${tag}`">{{ tag }}</span>
+              <span v-for="tag in product.serviceTags" :key="`${product.name}-${tag}`">{{ displayCode(tag) }}</span>
             </div>
             <div class="recommend-price-row">
               <strong>{{ product.price }}</strong>
