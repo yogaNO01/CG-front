@@ -1,9 +1,9 @@
 {
-  "session_id": "01a0c822-8e0e-7293-b493-32c6dac51124",
-  "native_session_id": "01a0c822-8e0e-7293-b493-32c6dac51124",
-  "started_at": "2026-09-24T02:08:29.201Z",
+  "session_id": "01a0e59a-f0ee-7fb3-a1e8-1f25fbcb645e",
+  "native_session_id": "01a0e59a-f0ee-7fb3-a1e8-1f25fbcb645e",
+  "started_at": "2026-09-28T01:22:18.192Z",
   "cwd": "/Users/zhangmingchun/Documents/shop/index",
   "state_root": "/Users/zhangmingchun/Documents/shop/index/.omx/state",
-  "pid": 9340,
+  "pid": 81330,
   "platform": "darwin"
 }
