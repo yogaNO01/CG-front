@@ -21,7 +21,9 @@ const activeSupplierCategory = ref('')
 const activeDetailImage = ref(0)
 const selectedSpec = ref('标准配置')
 const purchaseQuantity = ref(1)
-const recommendationOffset = ref(0)
+const recommendationPage = ref(1)
+const recommendationProducts = ref([])
+const recommendationLoading = ref(false)
 const featuredProductOffset = ref(0)
 const featuredVisibleCount = ref(window.innerWidth <= 599 ? 2 : window.innerWidth <= 899 ? 3 : 4)
 const featuredCarouselDirection = ref('next')
@@ -56,16 +58,12 @@ const apiError = ref('')
 const homeStatistics = ref({})
 const latestNews = ref([])
 const selectedNews = ref(null)
-const homepageNewsCoverByTitle = {
-  '制造企业采购如何建立合格供应商清单': '/images/news/supplier-qualification.png',
-  '工业品询价前需要确认的六项参数': '/images/news/rfq-technical-parameters.png',
-  '供应链韧性：从单一货源到多源协同': '/images/news/supply-chain-resilience.png',
-}
-const homepageNewsCover = (item) => homepageNewsCoverByTitle[item.title] || item.coverImage || '/images/news/supplier-qualification.png'
+const newsCover = (item) => item?.coverImage || ''
 const searchKeyword = ref('')
 const searchType = ref('product')
 const catalogLoading = ref(false)
 const catalogTotal = ref(0)
+const defaultCatalogPageSize = 20
 const readPurchaseList = () => {
   try {
     const stored = JSON.parse(localStorage.getItem('qcy-purchase-list') || '[]')
@@ -85,6 +83,132 @@ const procurementSubmitting = ref(false)
 const procurementMessage = ref('')
 const procurementForm = ref({ categoryId: '', description: '', quantity: '', unit: '件', contactName: '', contactPhone: '' })
 const procurementCategoryOpen = ref(false)
+const activeMerchantGuide = ref('preparation')
+const merchantGuides = [
+  {
+    id: 'preparation', group: '卖家指南', label: '入驻前准备', title: '商家入驻前准备', updatedAt: '2026-09-29',
+    intro: '准备充分的企业资料与商品信息，能让后续资料核验和店铺配置更顺畅。以下内容用于帮助您提前梳理信息，不代表审核承诺。',
+    sections: [
+      { title: '适用商家', paragraphs: ['擎采云主要服务工业品、工程物料、设备配套及企业服务领域的供货商家。生产工厂、品牌方、经销商均可根据实际经营情况准备相关资料。'] },
+      { title: '建议提前准备的资料', list: ['企业主体证明与有效的经营信息', '主营产品、型号、应用场景与服务区域说明', '产品实拍图、工厂或仓储环境图等可佐证供货能力的材料', '涉及行业准入时，按产品属性准备相应的许可或授权文件'] },
+      { title: '信息填写原则', paragraphs: ['企业名称、产品参数、图片与资质应保持一致、真实且可核验。请避免使用与实际经营无关的品牌、认证或宣传描述。', '如同一主体存在多个经营地点或多个业务品牌，建议先明确本次展示的主体、主营方向和可供范围，避免采购方产生理解偏差。'] },
+      { title: '资料有效性与更新', paragraphs: ['请留意营业期限、行业许可、品牌授权等材料的有效期。企业名称、地址、经营范围或关键资质发生变化时，应及时更新说明，避免展示信息与实际情况不一致。'] },
+      { title: '暂不适合展示的内容', list: ['无法证明来源或无法稳定供货的产品', '需具备特定经营许可但暂未准备相应材料的产品', '带有夸大承诺、绝对化表述或无法核实的荣誉宣传', '与工业采购无关、仅用于引流或重复发布的信息'] },
+      { title: '首次整理资料的小建议', paragraphs: ['可以先从采购方最常问的问题开始整理：产品做什么、有哪些规格、能否定制、最低订量是多少、通常多久交货、由谁提供售后。将这些信息形成基础资料，后续维护商品会更高效。', '涉及多个产品线时，建议按类目分别建立资料清单，不必一次展示全部产品，但每一条已展示的信息应能及时响应和核实。'] },
+    ],
+  },
+  {
+    id: 'quality', group: '卖家指南', label: '商品发布注意事项', title: '商品信息发布注意事项', updatedAt: '2026-09-29',
+    intro: '商品页面是采购方判断是否进一步沟通的重要依据。清楚、可比较的信息比泛泛的宣传更有效。',
+    sections: [
+      { title: '商品标题怎么写', paragraphs: ['建议使用“产品名称 + 核心规格/型号 + 关键用途”的方式，让采购方能够快速判断是否匹配。标题不宜堆叠无关关键词或夸张用语。', '例如可围绕材质、压力等级、尺寸、功率、适配设备等真实特征补充标题，而不是使用“全网最低”“万能”“顶级”等无法验证的描述。'] },
+      { title: '商品内容应包含', list: ['可选型号、关键参数与计量单位', '适用场景、起订要求、供货周期或定制说明', '清晰且与实物一致的产品图片', '对采购决策有影响的材质、工艺、安装或售后信息'] },
+      { title: '图片与参数的对应关系', paragraphs: ['主图应能清楚识别商品主体；细节图可补充接口、铭牌、包装、工艺或使用状态。若展示图为示意图、组合图或非标准配置，应在说明中明确标注。', '规格参数应使用统一单位，并与询价、交付时实际可供的版本保持一致。型号较多时，可先列出常用规格并说明可进一步选型。'] },
+      { title: '价格与库存的展示建议', paragraphs: ['当价格会随规格、数量、原材料或地区变化时，可使用“按实际询价为准”的说明，并写清影响价格的关键条件。不要用明显不适用于多数订单的价格吸引点击。', '库存、现货和交期信息应根据真实库存及生产安排维护；无法立即确认时，应明确回复采购方核实周期。'] },
+      { title: '服务能力如何写得可信', paragraphs: ['可以具体说明是否支持定制、打样、选型、安装指导、项目配套、检测或售后响应，而不是泛泛写“服务完善”。每一项能力都应有对应人员、流程或资源可以落地。'] },
+      { title: '避免出现的问题', paragraphs: ['不要发布无法提供、参数不明或与实际不符的商品；不要在商品信息中填写与交易无关的联系方式、外部导流内容或未经授权的品牌信息。', '同一商品不应通过微调标题、图片或价格反复发布。相近型号可以在同一商品内说明差异，方便采购方比较和询价。'] },
+    ],
+  },
+  {
+    id: 'qualification', group: '卖家指南', label: '资质与授权材料', title: '资质与授权材料准备说明', updatedAt: '2026-09-29',
+    intro: '不同产品需要的证明材料并不完全相同。将企业主体、产品合规与品牌授权材料按实际经营范围归类，有助于后续核验与展示。',
+    sections: [
+      { title: '企业主体材料', paragraphs: ['企业主体材料应能反映当前有效的经营信息。若企业名称、统一社会信用代码、地址或经营范围发生变化，请优先以最新材料为准。'] },
+      { title: '产品相关材料', paragraphs: ['对于有行业准入、备案、许可、检测或执行标准要求的产品，应根据产品属性准备相应材料。材料应与拟展示产品的名称、型号、适用范围或生产主体具有合理关联。'] },
+      { title: '品牌与渠道授权', paragraphs: ['经销、代理或展示品牌商品时，建议提前确认授权主体、授权产品、区域与有效期。授权链路存在多级关系时，应保证必要的上下游关系可以说明。'] },
+      { title: '材料使用边界', list: ['只展示仍在有效期内且与当前产品相符的材料', '不要修改、拼接或遮盖影响判断的关键信息', '不要将单一产品或单次检测结果扩大用于全部产品', '涉及商业秘密的材料，可在沟通中按实际需要提供说明'] },
+    ],
+  },
+  {
+    id: 'verification', group: '卖家指南', label: '资料核验说明', title: '企业资料核验说明', updatedAt: '2026-09-29',
+    intro: '平台会根据商家提交的信息进行基础核对。资料完整且彼此一致，有助于减少补充沟通。',
+    sections: [
+      { title: '核验关注哪些内容', paragraphs: ['重点关注企业主体是否真实有效、经营范围与主营产品是否合理匹配，以及展示的认证、授权或资质是否仍在有效期内。', '对于具有行业准入要求的产品，平台可能关注相应许可、备案、检测报告或授权链路是否完整。'] },
+      { title: '提交材料的清晰度', paragraphs: ['请提交完整、清晰且能够辨识关键信息的材料。图片应避免过度遮挡、裁切或压缩；如材料包含多页，请保证必要页面齐全。'] },
+      { title: '资料不一致时怎么办', paragraphs: ['如企业名称、地址、品牌授权或产品类别发生变化，请以当前有效资料为准重新整理；必要时，平台会提示您补充说明。', '若展示主体与生产主体、品牌方不一致，应如实说明各方关系，并按实际情况准备可验证的授权或合作材料。'] },
+      { title: '认证展示说明', paragraphs: ['平台认证信息仅基于已核验的材料展示，不代表对商品品质、交付能力或合作结果作出保证。', '认证或资质展示不应被用于超出材料范围的宣传，例如将单项检测、局部授权解释为全部产品或全部区域的保证。'] },
+      { title: '补充材料的常见情形', list: ['产品类别与营业范围或已有资料关联不清晰', '展示品牌与企业主体之间缺少有效授权说明', '许可、检测、备案等材料临近失效或页面不完整', '产品图片、型号、标签与提交的资料无法相互对应'] },
+    ],
+  },
+  {
+    id: 'operation', group: '卖家指南', label: '店铺信息维护', title: '店铺信息维护与采购沟通建议', updatedAt: '2026-09-29',
+    intro: '持续维护企业与商品信息，能让采购方获得更稳定的判断依据。以下建议侧重于真实展示与高效沟通。',
+    sections: [
+      { title: '哪些信息应定期检查', list: ['企业简介、主营类目和服务区域是否仍与实际经营相符', '在售商品的型号、库存状态、起订要求和交期说明', '资质、授权、检测或认证材料是否临近有效期', '联系人、售后方式和交付能力说明是否仍然有效'] },
+      { title: '收到询盘后如何回应', paragraphs: ['建议优先确认采购方的型号、技术参数、数量、用途和交期，再提供与需求相匹配的供货建议。对于无法确认的内容，应明确说明需要进一步核实，而不是做出不确定承诺。'] },
+      { title: '报价与交期说明', paragraphs: ['报价应说明适用的规格、数量范围、税费或运费口径，以及报价有效期。交期受原材料、排产或运输影响时，可说明当前预计安排和可能需要确认的条件。'] },
+      { title: '发生变更时的处理', paragraphs: ['产品停产、规格调整、供货周期变化或服务范围缩减时，应尽快更新页面信息。对已经沟通中的采购需求，建议主动说明变化原因和可替代方案。'] },
+      { title: '售后与争议处理建议', paragraphs: ['采购前应尽量确认产品版本、验收标准、交付方式和责任边界。发生质量、数量或交付争议时，建议保留沟通记录、订单信息、物流凭据、检验或现场照片，并基于事实协商处理。', '对于需要技术确认的情况，应由了解产品的人员参与回复，避免客服口径与实际能力不一致。'] },
+      { title: '长期维护的节奏', paragraphs: ['建议定期检查重点商品，而不是等到出现询盘争议后再集中修改。可以按月查看产品参数、图片、交期与资质有效期；在原材料、排产或业务范围变化时同步更新。'] },
+    ],
+  },
+  {
+    id: 'quotation', group: '卖家指南', label: '报价与交期说明', title: '报价与交期沟通说明', updatedAt: '2026-09-29',
+    intro: '工业采购中的报价通常与规格、数量、交付方式和服务范围有关。清楚说明报价条件，有助于双方更快确认是否继续推进。',
+    sections: [
+      { title: '报价前建议确认的信息', list: ['产品型号、关键参数、图纸或样品要求', '采购数量、批次安排和是否需要打样', '收货地区、运输方式、包装或送货要求', '是否含税、是否需要安装、调试或技术支持'] },
+      { title: '报价内容应说明什么', paragraphs: ['报价应尽量对应具体规格、数量范围和交付条件，并说明价格是否含税、运费或包装费用。对于阶梯价格、定制费用或模具费用，也应说明适用条件。'] },
+      { title: '交期如何表达', paragraphs: ['交期应结合当前库存、采购周期、排产和物流安排判断。若只能提供预计交期，应明确这是预估时间，并说明影响交付的前置条件。'] },
+      { title: '价格或交期变化时', paragraphs: ['当原材料、汇率、排产、运输或客户规格变化影响报价时，应及时告知采购方变化原因、有效期限与可选方案，避免沿用已经不适用的承诺。'] },
+    ],
+  },
+  {
+    id: 'delivery', group: '卖家指南', label: '履约与售后说明', title: '履约与售后服务说明', updatedAt: '2026-09-29',
+    intro: '在订单确认前沟通清楚交付、验收和售后边界，可以减少后续争议，也能提升采购方对服务能力的判断。',
+    sections: [
+      { title: '交付前确认', paragraphs: ['建议双方确认产品版本、数量、包装要求、收货信息、交付时间和验收方式。对于非标定制、工程配套或分批供货，应将关键节点和变更条件说明清楚。'] },
+      { title: '发货与签收', paragraphs: ['发货前应核对型号、数量、随货资料和包装状态；发货后可保留物流、装箱、签收等记录。出现运输损坏、少件或错发时，应及时核实并与采购方沟通处理方式。'] },
+      { title: '质量与售后响应', paragraphs: ['收到质量反馈时，先确认批次、使用条件、问题现象和可佐证信息。对于需要技术判断的问题，应由具备产品知识的人员参与处理，并明确回复时点和下一步安排。'] },
+      { title: '服务范围的边界', paragraphs: ['安装、调试、现场服务、备件或退换货等服务内容，应根据实际合同、产品属性和双方约定执行。不要将可选服务描述为默认包含的服务。'] },
+    ],
+  },
+  {
+    id: 'conduct', group: '卖家指南', label: '经营行为与风险提示', title: '商家经营行为与风险提示', updatedAt: '2026-09-29',
+    intro: '真实、清晰、有边界的信息展示是采购沟通的基础。本页提示常见的风险场景，帮助商家减少因信息不准确造成的误解。',
+    sections: [
+      { title: '真实经营与如实展示', paragraphs: ['商家应基于实际可供产品、产能、授权与服务能力展示信息。不应冒用他人主体、品牌、资质、图片或项目案例，也不应将合作意向描述为已经获得的资格。'] },
+      { title: '不宜使用的宣传表述', list: ['“全行业最低价”“永久现货”“任何场景都适用”等无法验证的绝对化承诺', '无法证明来源的排名、荣誉、专利、认证或客户案例', '以明显偏离实际条件的价格、交期或配置吸引采购方咨询', '将样品、试制版本或局部能力描述为标准量产供货能力'] },
+      { title: '品牌与知识产权', paragraphs: ['展示他人品牌、商标、专利产品或技术资料时，应确保拥有合法来源和必要授权。收到权利人异议或发现页面存在误用时，应先核实并及时处理相关内容。'] },
+      { title: '沟通边界', paragraphs: ['与采购方沟通时，应围绕产品、规格、报价、交期和服务条件提供清晰答复。不要引导采购方绕开必要的核验与确认流程，也不要承诺超出企业实际能力的方案。'] },
+      { title: '发现风险后的处理', paragraphs: ['若发现商品参数写错、资质过期、图片来源不清或供货状态发生变化，建议先暂停相关展示并完成核实。对于已在沟通中的采购方，应主动说明影响范围和后续安排。'] },
+    ],
+  },
+  {
+    id: 'faq', group: '常见问题', label: '商家常见问题', title: '商家入驻常见问题', updatedAt: '2026-09-29',
+    intro: '以下回答聚焦商家准备和信息展示。实际合作安排以平台后续沟通和相关规则为准。',
+    sections: [
+      { title: '没有完整商品资料，可以先了解吗？', paragraphs: ['可以先整理主营方向和可供能力。平台后续会根据类目说明需要补充的商品信息与资料。', '但在正式展示前，至少应能够清楚说明产品范围、主要规格和基础供货条件，避免采购方无法判断适配性。'] },
+      { title: '贸易商可以展示品牌商品吗？', paragraphs: ['可以，但需要保证货源真实，并在需要时提供与品牌、产品相匹配的有效授权或进货证明。', '如授权存在产品、区域或期限限制，应在展示和沟通中按照实际范围说明。'] },
+      { title: '为什么商品信息需要写得这么细？', paragraphs: ['工业采购往往涉及型号、尺寸、材质、交期等条件。信息越清晰，采购方越容易判断是否与需求相符，也能减少无效询盘。', '准确的参数还能帮助商家在沟通初期筛除不适配需求，把时间留给真正可成交的项目。'] },
+      { title: '资料更新后是否需要重新核验？', paragraphs: ['涉及企业主体、资质有效期、品牌授权或主营方向等关键变化时，建议及时更新并按要求补充核验材料。'] },
+      { title: '可以承诺最低价或最快交付吗？', paragraphs: ['不建议使用无法稳定兑现的绝对承诺。价格和交期通常与规格、数量、材料、排产及服务区域有关，应根据实际条件进行说明。'] },
+      { title: '发现页面信息有误怎么办？', paragraphs: ['应尽快更正企业或商品信息。若错误内容涉及资质、品牌、产品参数或供货能力，建议先暂停相关表述，核实后再恢复展示。'] },
+      { title: '采购方要求提供检测或认证材料，必须马上给吗？', paragraphs: ['应根据产品属性、合作阶段和资料范围进行确认。可以先说明现有材料的适用范围与有效期；涉及保密、项目专用或需要进一步核实的材料，应与采购方明确沟通方式。'] },
+      { title: '商品型号更新后，旧型号还可以保留吗？', paragraphs: ['如果旧型号仍可供货，可明确标注版本、库存或交期；若已停产或被替代，应在页面中清晰说明，必要时提供替代型号及差异说明。'] },
+      { title: '采购方询问的需求不在主营范围内，应该怎么回复？', paragraphs: ['建议如实说明当前无法覆盖的部分；如确有可靠的配套方案，也应明确自身负责的产品与服务边界，避免将第三方能力误认为自身承诺。'] },
+    ],
+  },
+  {
+    id: 'product-faq', group: '常见问题', label: '商品信息常见问题', title: '商品信息常见问题', updatedAt: '2026-09-29',
+    intro: '围绕型号、图片、参数和供货状态，整理商家在维护商品信息时经常遇到的问题。',
+    sections: [
+      { title: '一个商品可以写多个型号吗？', paragraphs: ['可以。型号之间仅存在规格差异时，可在同一商品中说明可选型号与对应参数；如果产品用途、材质、交付方式差异较大，建议分开展示，方便采购方比较。'] },
+      { title: '没有实拍图可以使用效果图吗？', paragraphs: ['可以作为辅助图片，但应明确为示意或效果图，不能让采购方误以为是实际交付产品。主图优先使用能真实反映产品外观和配置的图片。'] },
+      { title: '参数暂时无法确认怎么办？', paragraphs: ['不建议填写猜测或通用参数。可以先展示已确认的参数，并说明其余信息需要根据型号或工况进一步选型确认。'] },
+      { title: '商品停售后需要删除吗？', paragraphs: ['如不再供货，应及时下架或标明停售；如有替代型号，可在说明中提供对应关系，但不要继续按旧型号承诺现货或原交期。'] },
+    ],
+  },
+  {
+    id: 'service-faq', group: '常见问题', label: '履约服务常见问题', title: '履约服务常见问题', updatedAt: '2026-09-29',
+    intro: '以下内容帮助商家在报价、交付与售后阶段建立更一致的沟通口径。',
+    sections: [
+      { title: '采购方要求样品，应该怎么约定？', paragraphs: ['应说明样品是否收费、规格版本、交付时间、运费承担和样品确认方式。样品仅用于测试时，也应明确其与批量供货版本可能存在的差异。'] },
+      { title: '非标产品的交期如何确认？', paragraphs: ['应在确认图纸、技术要求、材料、数量和预付款等关键条件后安排。对于尚未完成技术确认的项目，可先提供估算周期并注明前提。'] },
+      { title: '遇到售后问题可以由销售直接答复吗？', paragraphs: ['基础进度可以由销售同步，但涉及技术责任、质量判断或处理方案时，建议由技术、质量或售后人员共同确认，保证答复可执行。'] },
+      { title: '采购方临时变更需求怎么办？', paragraphs: ['先确认变更会对规格、价格、排产和交期产生哪些影响，再书面同步新的方案。未确认前，不宜按原订单继续承诺不受影响。'] },
+    ],
+  },
+]
 
 const displayLabels = {
   platform_verified: '平台认证', factory_audited: '已验厂', customization: '支持定制', fast_shipping: '快速发货',
@@ -106,10 +230,21 @@ const displayCodes = (values, fallback = []) => {
   return labels.length ? labels : fallback
 }
 const formatNewsDate = (value) => value ? String(value).slice(0, 10).replaceAll('-', '.') : ''
+// 后端日期字段有时以 ISO 时间字符串返回；工商档案仅展示日期部分，避免暴露时区时间。
+const formatBusinessDate = (value, fallback = '—') => {
+  if (!value) return fallback
+  const date = String(value).match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+  return date || String(value)
+}
+// 法定代表人属于个人信息，仅保留首个字符，其余字符统一脱敏。
+const maskLegalRepresentative = (value) => {
+  const name = Array.from(String(value || '').trim())
+  return name.length ? `${name[0]}${'*'.repeat(Math.max(0, name.length - 1))}` : '—'
+}
 
 const emptyProduct = {
-  id: '', name: '商品加载中', price: '—', tag: '', badge: '', scene: 'factory', icon: 'factory', image: '/images/product-touch-panel.png',
-  images: ['/images/product-touch-panel.png'], products: [], raw: {},
+  id: '', name: '商品加载中', price: '—', tag: '', badge: '', scene: 'factory', icon: 'factory', image: '',
+  images: [], products: [], raw: {},
 }
 const emptySupplier = { id: '', name: '店铺加载中', shortName: '', mark: '', tone: 'blue', logo: '', category: '', location: '', products: [], raw: {} }
 
@@ -163,24 +298,94 @@ const toProduct = (item, index = 0) => {
   badge: item.marketingBadge === 'source_supply' ? '源头直供' : item.marketingBadge === 'hot_sale' ? '热销优品' : '优选商品',
   scene: ['factory', 'vehicle', 'material', 'parts', 'motor', 'solar'][index % 6],
   icon: ['factory', 'car', 'grid', 'gear', 'diamond', 'grid'][index % 6],
-  image: item.mainImageUrl || '/images/product-touch-panel.png',
-  images: item.imageUrls?.length ? item.imageUrls : [item.mainImageUrl || '/images/product-touch-panel.png'],
+  image: item.mainImageUrl || '',
+  images: item.imageUrls?.filter(Boolean)?.length ? item.imageUrls.filter(Boolean) : (item.mainImageUrl ? [item.mainImageUrl] : []),
   location: item.originPlace || item.company?.shippingAddress?.displayName || '中国',
   supplier: item.company?.companyName || '',
   years: item.company?.statistics?.operatingYears ? `${item.company.statistics.operatingYears}年` : '',
   raw: normalizedItem,
   }
 }
+// A previous data migration created many supplier logos from the exact same
+// "mountain" SVG. Keep uploaded, merchant-provided logos untouched, but replace
+// those known placeholders with compact identity marks that read as actual
+// industrial company logos at card size.
+const generatedLogoFiles = new Set([
+  'changsha-andun.svg', 'changzhou-ruikong.svg', 'chengdu-xishu.svg', 'chongqing-hengan.svg', 'dalian-huaan.svg', 'dongguan-kerun.svg',
+  'foshan-jingrui.svg', 'hangzhou-chengjing.svg', 'hebei-langdun.svg', 'hefei-anyuan.svg', 'jiaxing-guwei.svg', 'linyi-jinhu.svg',
+  'nanjing-lanqing.svg', 'qingdao-haiyue.svg', 'shenzhen-zhilian.svg', 'suzhou-honglian.svg', 'suzhou-saihu.svg', 'taizhou-tuoli.svg',
+  'tianjin-haichuan.svg', 'weifang-taigu.svg', 'wenzhou-chuangjie.svg', 'wuhan-gelian.svg', 'wuxi-qingyuan.svg', 'yixing-hengtong.svg',
+  ...Array.from({ length: 24 }, (_, index) => `featured-merchant-${String(index + 1).padStart(2, '0')}.svg`),
+])
+const escapeSvgText = (value) => String(value || '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character])
+const logoProfile = (category, identity) => {
+  const key = `${category || ''}${identity || ''}`
+  const hash = [...key].reduce((total, character) => total * 31 + character.charCodeAt(0), 7) >>> 0
+  if (/包装/.test(key)) return { colors: ['#ef7b26', '#8d2d1c'], mark: '<path d="M55 84 120 48l65 36v72l-65 36-65-36V84Zm65 0v72m-65-72 65 36 65-36" fill="none" stroke="#fff" stroke-width="13" stroke-linejoin="round"/><path d="M84 103h72" stroke="#ffd79f" stroke-width="10" stroke-linecap="round"/>' }
+  if (/水|过滤|环保/.test(key)) return { colors: ['#12a3a6', '#075b86'], mark: '<path d="M120 45c-27 34-47 57-47 79a47 47 0 0 0 94 0c0-22-20-45-47-79Z" fill="none" stroke="#fff" stroke-width="13"/><path d="M66 163c21-14 36-14 54 0 18 14 33 14 54 0" fill="none" stroke="#a8f2e9" stroke-width="11" stroke-linecap="round"/>' }
+  if (/电缆|线缆/.test(key)) return { colors: ['#3f51b5', '#1a235f'], mark: '<path d="M54 79c30 0 30 82 60 82s30-82 60-82" fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round"/><path d="M54 121c30 0 30-58 60-58s30 58 60 58" fill="none" stroke="#9bd6ff" stroke-width="11" stroke-linecap="round"/><circle cx="54" cy="79" r="10" fill="#ffd566"/><circle cx="174" cy="79" r="10" fill="#ffd566"/>' }
+  if (/工控|控制|自动化|电气/.test(key)) return { colors: ['#1269c7', '#17306a'], mark: '<rect x="62" y="62" width="116" height="116" rx="24" fill="none" stroke="#fff" stroke-width="12"/><circle cx="95" cy="100" r="10" fill="#a5efff"/><circle cx="145" cy="94" r="10" fill="#a5efff"/><circle cx="127" cy="145" r="10" fill="#a5efff"/><path d="M103 105l32-8m-30 10 18 28m20-30-12 29" stroke="#fff" stroke-width="9" stroke-linecap="round"/>' }
+  if (/扳手|五金|工具/.test(key)) return { colors: ['#485d75', '#18293e'], mark: '<path d="M158 55a34 34 0 0 0-38 45l-57 57a20 20 0 1 0 28 28l57-57a34 34 0 0 0 45-38l-24 24-24-8-8-24 21-27Z" fill="none" stroke="#fff" stroke-width="13" stroke-linejoin="round"/><circle cx="77" cy="170" r="6" fill="#ffcc61"/>' }
+  if (/矿|防爆|安全/.test(key)) return { colors: ['#d66a23', '#6e2819'], mark: '<path d="M120 48 178 70v45c0 35-24 61-58 77-34-16-58-42-58-77V70l58-22Z" fill="none" stroke="#fff" stroke-width="12"/><path d="m94 125 17 17 35-39" fill="none" stroke="#ffdd82" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>' }
+  if (/材料|建材|防水/.test(key)) return { colors: ['#bd4d46', '#68243d'], mark: '<path d="m58 85 62-33 62 33-62 33-62-33Zm0 38 62 33 62-33m-124 38 62 33 62-33" fill="none" stroke="#fff" stroke-width="13" stroke-linejoin="round"/>' }
+  if (/化工|药剂/.test(key)) return { colors: ['#7a48ad', '#3b216f'], mark: '<path d="M94 54h52m-36 0v44l-39 64a18 18 0 0 0 16 27h66a18 18 0 0 0 16-27l-39-64V54" fill="none" stroke="#fff" stroke-width="12" stroke-linejoin="round"/><path d="M89 142h62" stroke="#e8b7ff" stroke-width="12" stroke-linecap="round"/>' }
+  const palette = [['#0d8b8d', '#073b56'], ['#bf5a32', '#5b2543'], ['#4662bf', '#20265d'], ['#22815d', '#123c43']][hash % 4]
+  return { colors: palette, mark: '<path d="M120 48 174 79v62l-54 31-54-31V79l54-31Z" fill="none" stroke="#fff" stroke-width="13"/><path d="M92 128h56M120 100v56" stroke="#b9f4ed" stroke-width="12" stroke-linecap="round"/>' }
+}
+// Hand-authored/AI-generated artwork is used where a supplier's industry gives
+// us a clear visual cue. These are kept as normal project assets instead of
+// asking every browser to synthesize the same template at runtime.
+const generatedBrandAssets = {
+  'suzhou-honglian.svg': '/api/uploads/seed-company-logos-ai-suzhou-honglian.png',
+  'foshan-jingrui.svg': '/api/uploads/seed-company-logos-ai-foshan-jingrui.png',
+  'wenzhou-chuangjie.svg': '/api/uploads/seed-company-logos-ai-wenzhou-chuangjie.png',
+  'wuxi-qingyuan.svg': '/api/uploads/seed-company-logos-ai-wuxi-qingyuan.png',
+  'hangzhou-chengjing.svg': '/api/uploads/seed-company-logos-ai-hangzhou-chengjing.png',
+  'tianjin-haichuan.svg': '/api/uploads/seed-company-logos-ai-tianjin-haichuan.png',
+  'yixing-hengtong.svg': '/api/uploads/seed-company-logos-ai-yixing-hengtong.png',
+  'hefei-anyuan.svg': '/api/uploads/seed-company-logos-ai-hefei-anyuan.png',
+  'chengdu-xishu.svg': '/api/uploads/seed-company-logos-ai-chengdu-xishu.png',
+  'shenzhen-zhilian.svg': '/api/uploads/seed-company-logos-ai-shenzhen-zhilian.png',
+  'changzhou-ruikong.svg': '/api/uploads/seed-company-logos-ai-changzhou-ruikong.png',
+  'wuhan-gelian.svg': '/api/uploads/seed-company-logos-ai-wuhan-gelian.png',
+}
+const merchantLogo = (originalLogo, shortName, category) => {
+  const sourceFile = String(originalLogo || '').split('/').pop().replace(/^seed-company-logos-/, '')
+  if (generatedBrandAssets[sourceFile]) return generatedBrandAssets[sourceFile]
+  if (!generatedLogoFiles.has(sourceFile)) return originalLogo || ''
+  const identityIndex = [...generatedLogoFiles].indexOf(sourceFile)
+  const hue = (identityIndex * 47 + 198) % 360
+  const palette = `hsl(${hue} 68% 39%)`
+  const wordmark = escapeSvgText(String(shortName || '').slice(0, 2))
+  const label = escapeSvgText(String(shortName || '').slice(0, 4))
+  const layouts = [
+    `<rect width="240" height="240" rx="42" fill="${palette}"/><path d="M52 112h136" stroke="#fff" stroke-width="12"/><text x="120" y="98" fill="#fff" font-size="38" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text><text x="120" y="153" fill="#fff" font-size="17" font-family="PingFang SC" text-anchor="middle">${label}</text>`,
+    `<circle cx="120" cy="120" r="86" fill="none" stroke="${palette}" stroke-width="12"/><circle cx="120" cy="120" r="63" fill="${palette}"/><text x="120" y="135" fill="#fff" font-size="46" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text><circle cx="120" cy="43" r="7" fill="${palette}"/><circle cx="120" cy="197" r="7" fill="${palette}"/>`,
+    `<path d="M32 50h176v140H32z" fill="#15263d"/><path d="M32 158h176v32H32z" fill="${palette}"/><text x="120" y="125" fill="#fff" font-size="48" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text><text x="120" y="183" fill="#fff" font-size="17" font-family="PingFang SC" text-anchor="middle">${label}</text>`,
+    `<path d="M42 51h88l65 65-65 65H42z" fill="${palette}"/><path d="m96 74 40 42-40 42" fill="none" stroke="#fff" stroke-width="13"/><text x="120" y="190" fill="${palette}" font-size="26" font-family="PingFang SC" font-weight="800" text-anchor="middle">${label}</text>`,
+    `<rect x="31" y="34" width="178" height="172" rx="26" fill="#f5f8fa"/><path d="M59 72h122v13H59zm0 30h92v13H59zm0 30h122v13H59z" fill="${palette}"/><text x="120" y="181" fill="#1f344b" font-size="34" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text>`,
+    `<path d="M120 37 201 84v94l-81 47-81-47V84l81-47Z" fill="${palette}"/><path d="M76 115h88" stroke="#fff" stroke-width="8" opacity=".55"/><text x="120" y="139" fill="#fff" font-size="44" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text>`,
+    `<rect width="240" height="240" rx="32" fill="#fff"/><path d="M38 55h164v25H38zM38 102h104v25H38zM38 149h164v25H38z" fill="${palette}"/><text x="166" y="126" fill="#1e293b" font-size="30" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text>`,
+    `<circle cx="120" cy="120" r="92" fill="#fff" stroke="${palette}" stroke-width="18"/><path d="M68 135c29-60 74-60 104 0" fill="none" stroke="${palette}" stroke-width="13"/><text x="120" y="176" fill="${palette}" font-size="28" font-family="PingFang SC" font-weight="800" text-anchor="middle">${label}</text>`,
+    `<path d="M35 45h170v150H35z" fill="#f0f7f7"/><path d="m52 159 74-89 62 89" fill="none" stroke="${palette}" stroke-width="16"/><text x="120" y="197" fill="${palette}" font-size="24" font-family="PingFang SC" font-weight="800" text-anchor="middle">${label}</text>`,
+    `<path d="M40 65h160v110H40z" fill="${palette}"/><path d="M40 65 93 40h107v110l-53 25H40z" fill="#fff" opacity=".22"/><text x="120" y="130" fill="#fff" font-size="45" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text><text x="120" y="160" fill="#fff" font-size="16" font-family="PingFang SC" text-anchor="middle">${label}</text>`,
+    `<path d="M53 52h134v136H53z" fill="#152238"/><circle cx="120" cy="120" r="45" fill="${palette}"/><text x="120" y="135" fill="#fff" font-size="42" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text><path d="M53 205h134" stroke="${palette}" stroke-width="12"/>`,
+    `<rect x="28" y="52" width="184" height="136" rx="68" fill="${palette}"/><text x="120" y="122" fill="#fff" font-size="45" font-family="Arial" font-weight="800" text-anchor="middle">${wordmark}</text><text x="120" y="153" fill="#fff" font-size="16" font-family="PingFang SC" text-anchor="middle">${label}</text>`,
+  ]
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">${layouts[identityIndex % layouts.length]}</svg>`
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+}
 const toSupplier = (item = {}, index = 0) => {
   const companyName = item.companyName || '店铺加载中'
+  const category = item.featuredProducts?.[0]?.categoryName || item.products?.[0]?.categoryName || ''
   return {
     id: item.companyId || '',
     name: companyName,
     shortName: item.shortName || companyName,
     mark: item.logoText || companyName.slice(0, 2),
     tone: item.themeColor || ['blue', 'green', 'orange', 'teal'][index % 4],
-    logo: item.logoUrl || '',
-    category: item.featuredProducts?.[0]?.categoryName || item.products?.[0]?.categoryName || '',
+    logo: merchantLogo(item.logoUrl, item.shortName || companyName, category),
+    category,
     location: item.shippingAddress?.displayName || '',
     products: (item.products || item.featuredProducts || []).map((product, productIndex) => toProduct(product, productIndex)),
     raw: item,
@@ -197,6 +402,8 @@ const loadHome = async () => {
       groups: (root.children || []).map((group) => ({ id: group.categoryId, title: group.categoryName, items: (group.children || []).map((child) => ({ id: child.categoryId, name: child.categoryName })) })),
     }))
     homeProducts.value = productData.map(toProduct)
+    recommendationProducts.value = homeProducts.value
+    recommendationPage.value = 1
     homeSupplierShowcases.value = companyData.map(toSupplier)
     homeStatistics.value = data.statistics || {}
     homeLatestNews.value = data.latestNews || []
@@ -268,6 +475,10 @@ const loadRouteData = async () => {
       // 失败后会保留首页的旧数据，造成“搜索总是全部结果”的假象。
       const apiParams = new URLSearchParams(params)
       apiParams.delete('type')
+      // 列表接口默认每页只返回 20 条；即使初始链接没有分页参数，也显式传递，
+      // 让 URL 状态与实际请求保持一致。
+      if (!apiParams.get('page')) apiParams.set('page', '1')
+      if (!apiParams.get('pageSize')) apiParams.set('pageSize', String(defaultCatalogPageSize))
       const data = await api(`${endpoint}?${apiParams.toString()}`)
       if (searchType.value === 'company') supplierShowcases.value = (data.items || []).map(toSupplier)
       else catalogProducts.value = (data.items || []).map(toProduct)
@@ -346,6 +557,39 @@ const isStaticPage = computed(() => routeHash.value.startsWith('#/static'))
 const isPurchaseListPage = computed(() => routeHash.value.startsWith('#/purchase-list'))
 const isProcurementPage = computed(() => routeHash.value.startsWith('#/procurement'))
 const isMerchantJoinPage = computed(() => routeHash.value.startsWith('#/merchant-join'))
+const catalogPageSize = computed(() => {
+  const [, query = ''] = routeHash.value.split('?')
+  const pageSize = Number(new URLSearchParams(query).get('pageSize'))
+  return Number.isInteger(pageSize) && pageSize > 0 ? pageSize : defaultCatalogPageSize
+})
+const catalogPage = computed(() => {
+  const [, query = ''] = routeHash.value.split('?')
+  const page = Number(new URLSearchParams(query).get('page'))
+  return Number.isInteger(page) && page > 0 ? page : 1
+})
+const catalogPageCount = computed(() => Math.max(1, Math.ceil(catalogTotal.value / catalogPageSize.value)))
+const catalogPaginationItems = computed(() => {
+  const count = catalogPageCount.value
+  if (count <= 7) return Array.from({ length: count }, (_, index) => index + 1)
+
+  const start = Math.max(2, catalogPage.value - 2)
+  const end = Math.min(count - 1, catalogPage.value + 2)
+  const items = [1]
+  if (start > 2) items.push('ellipsis-left')
+  items.push(...Array.from({ length: end - start + 1 }, (_, index) => start + index))
+  if (end < count - 1) items.push('ellipsis-right')
+  items.push(count)
+  return items
+})
+const setCatalogPage = (page) => {
+  const nextPage = Math.min(Math.max(1, page), catalogPageCount.value)
+  if (nextPage === catalogPage.value) return
+  const [, query = ''] = routeHash.value.split('?')
+  const params = new URLSearchParams(query)
+  params.set('page', String(nextPage))
+  params.set('pageSize', String(catalogPageSize.value))
+  window.location.hash = `#/catalog?${params.toString()}`
+}
 const isNavActive = (item) => {
   if (item === '首页') return routeHash.value === '#/' || routeHash.value === ''
   if (item === '实力优品') return isCatalogPage.value || isProductDetailPage.value
@@ -357,6 +601,7 @@ const isNavActive = (item) => {
 
 const categoryNames = computed(() => categories.value.map((item) => item.name))
 const selectedProcurementCategory = computed(() => categories.value.find((category) => category.id === procurementForm.value.categoryId) || null)
+const activeMerchantGuideContent = computed(() => merchantGuides.find((guide) => guide.id === activeMerchantGuide.value) || merchantGuides[0])
 const supplierShowcaseCategories = computed(() => [...new Set(homeSupplierShowcases.value.map((supplier) => supplier.category).filter(Boolean))])
 const featuredCarouselProducts = computed(() => {
   const total = featuredProducts.value.length
@@ -455,7 +700,7 @@ const openCatalog = (category = '机械设备') => {
 const openProcurement = () => {
   window.location.hash = '#/procurement'
 }
-const categoryHref = (id) => `#/catalog?categoryId=${encodeURIComponent(id)}`
+const categoryHref = (id) => id ? `#/catalog?categoryId=${encodeURIComponent(id)}` : '#/catalog'
 const findCategoryByName = (name) => categories.value
   .flatMap((root) => [root, ...root.groups, ...root.groups.flatMap((group) => group.items)])
   .find((category) => category.name === name || category.title === name)
@@ -547,8 +792,29 @@ const closeProcurementCategoryOnOutsideClick = (event) => {
   if (!event.target.closest('.procurement-category-select')) procurementCategoryOpen.value = false
 }
 const submitProcurement = async () => { if (!procurementForm.value.categoryId) { procurementMessage.value = '请选择采购类目'; return }; if (!/^1[3-9]\d{9}$/.test(procurementForm.value.contactPhone)) { procurementMessage.value = '请输入有效的中国大陆手机号'; return }; procurementSubmitting.value = true; try { await api('/public/procurement-demands', { method: 'POST', body: procurementForm.value }); procurementMessage.value = '采购需求已提交，我们将人工跟进。采购清单已保留，方便您后续查看。' } catch (error) { procurementMessage.value = error.message || '提交失败' } finally { procurementSubmitting.value = false } }
-const cycleRecommendations = () => {
-  if (homeProducts.value.length) recommendationOffset.value = (recommendationOffset.value + 4) % homeProducts.value.length
+const cycleRecommendations = async () => {
+  if (recommendationLoading.value) return
+
+  recommendationLoading.value = true
+  try {
+    const nextPage = recommendationPage.value + 1
+    const data = await api(`/public/products?${new URLSearchParams({ page: String(nextPage), pageSize: '12' })}`)
+    const products = (data.items || []).map(toProduct)
+
+    // 到达最后一页时，从第一批重新开始，保持“换一批”始终可用。
+    if (products.length) {
+      recommendationProducts.value = products
+      recommendationPage.value = nextPage
+    } else {
+      const firstPageData = await api('/public/products?page=1&pageSize=12')
+      recommendationProducts.value = (firstPageData.items || []).map(toProduct)
+      recommendationPage.value = 1
+    }
+  } catch (error) {
+    apiError.value = error.message || '推荐商品加载失败'
+  } finally {
+    recommendationLoading.value = false
+  }
 }
 const updateFeaturedVisibleCount = () => {
   featuredVisibleCount.value = window.innerWidth <= 599 ? 2 : window.innerWidth <= 899 ? 3 : 4
@@ -686,15 +952,16 @@ const hotCategoryLinks = computed(() => {
 
 const recommendTabs = computed(() => categoryNames.value.slice(0, 6))
 const visibleSupplierShowcases = computed(() => {
-  const matches = homeSupplierShowcases.value.filter((supplier) => supplier.category === activeSupplierCategory.value)
-  const defaultSuppliers = homeSupplierShowcases.value.filter((supplier) => supplier.category === supplierShowcaseCategories.value[0])
-  const supplements = defaultSuppliers.filter((supplier) => !matches.some((match) => match.name === supplier.name))
-  return [...matches, ...supplements]
+  // 每个分类只展示自身的商家；不能再用首个分类的商家补位，
+  // 否则同一公司会错误地出现在每一个优选厂商标签下。
+  return homeSupplierShowcases.value
+    .filter((supplier) => supplier.category === activeSupplierCategory.value)
+    .slice(0, 4)
 })
 
 const premiumCatalogProducts = computed(() => homeProducts.value.slice(0, 6))
 const factoryCatalogProducts = computed(() => homeProducts.value.slice(2, 8))
-const recommendedProducts = computed(() => Array.from({ length: Math.min(12, homeProducts.value.length) }, (_, index) => homeProducts.value[(recommendationOffset.value + index) % homeProducts.value.length]).map((product) => ({
+const recommendedProducts = computed(() => recommendationProducts.value.map((product) => ({
   ...product,
   serviceTags: product.raw?.serviceGuarantees || ['platform_verified'],
   video: Boolean(product.raw?.videoUrls?.length)
@@ -863,7 +1130,7 @@ const marketSections = computed(() => [
             >
               {{ item }}
             </a>
-            <a href="#/catalog?category=机械设备">更多 &gt;</a>
+            <a href="#/catalog">更多 &gt;</a>
           </div>
         </div>
 
@@ -1056,7 +1323,7 @@ const marketSections = computed(() => [
           <section class="news-card">
             <div class="panel-title"><h3>采购资讯</h3><a href="#/news">查看更多<BaseIcon name="arrowRight" /></a></div>
             <a v-for="item in homeLatestNews.slice(0, 3)" :key="item.id" class="news-item" :href="`#/news?id=${item.id}`">
-              <img class="news-thumb" :src="homepageNewsCover(item)" :alt="item.title" />
+              <img v-if="newsCover(item)" class="news-thumb" :src="newsCover(item)" :alt="item.title" />
               <div>
                 <strong>{{ item.title }}</strong>
                 <span>{{ item.summary }}</span>
@@ -1118,7 +1385,7 @@ const marketSections = computed(() => [
             <h2>优选精品</h2>
             <p>严选认证供应商，适合快速询价与小批量试采</p>
           </div>
-          <a href="#/catalog?category=机械设备">查看更多<BaseIcon name="arrowRight" /></a>
+          <a href="#/catalog">查看更多<BaseIcon name="arrowRight" /></a>
         </div>
         <div class="premium-strip">
           <article v-for="product in premiumCatalogProducts" :key="`premium-${product.name}`" class="premium-card" role="link" tabindex="0" @click="openProduct(product)" @keydown.enter="openProduct(product)">
@@ -1191,7 +1458,7 @@ const marketSections = computed(() => [
             <h2>为您推荐</h2>
             <p>根据您的浏览，为您推荐热销工业商品</p>
           </div>
-          <button type="button" class="recommend-refresh" @click="cycleRecommendations">换一批<BaseIcon name="refresh" /></button>
+          <button type="button" class="recommend-refresh" :class="{ 'is-loading': recommendationLoading }" :disabled="recommendationLoading" :aria-busy="recommendationLoading" @click="cycleRecommendations">换一批<BaseIcon name="refresh" /></button>
         </div>
         <div class="recommend-grid">
           <article v-for="product in recommendedProducts" :key="`home-rec-${product.name}-${product.price}`" class="recommend-card" role="link" tabindex="0" @click="openProduct(product)" @keydown.enter="openProduct(product)">
@@ -1236,13 +1503,13 @@ const marketSections = computed(() => [
           <h1>{{ selectedNews.title }}</h1>
           <div><time>{{ formatNewsDate(selectedNews.publishedAt) }}</time><span>{{ selectedNews.viewCount || 0 }} 阅读</span></div>
         </header>
-        <img v-if="selectedNews.coverImage" class="news-article-cover" :src="selectedNews.coverImage" :alt="selectedNews.title" />
+        <img v-if="newsCover(selectedNews)" class="news-article-cover" :src="newsCover(selectedNews)" :alt="selectedNews.title" />
         <div class="news-article-body" v-html="newsArticleHtml"></div>
         <footer><a href="#/news"><BaseIcon name="arrowRight" />返回资讯列表</a></footer>
       </article>
       <template v-else-if="latestNews.length">
         <article class="news-lead">
-          <img :src="latestNews[0].coverImage || '/images/industry-solution.png'" :alt="latestNews[0].title" />
+          <img v-if="newsCover(latestNews[0])" :src="newsCover(latestNews[0])" :alt="latestNews[0].title" />
           <div>
             <span>最新发布</span>
             <h2>{{ latestNews[0].title }}</h2>
@@ -1255,7 +1522,7 @@ const marketSections = computed(() => [
           <div class="news-list">
             <a v-for="(item, index) in latestNews.slice(1)" :key="item.id" class="news-list-item" :href="`#/news?id=${item.id}`">
               <time>{{ formatNewsDate(item.publishedAt) }}</time>
-              <img :src="item.coverImage || '/images/industry-solution.png'" :alt="item.title" />
+              <img v-if="newsCover(item)" :src="newsCover(item)" :alt="item.title" />
               <div><span>采购参考 {{ String(index + 2).padStart(2, '0') }}</span><h3>{{ item.title }}</h3><p>{{ item.summary }}</p></div>
               <BaseIcon name="arrowRight" />
             </a>
@@ -1328,7 +1595,22 @@ const marketSections = computed(() => [
       </div>
     </section>
   </main>
-  <main v-else-if="isMerchantJoinPage" class="merchant-join-page" aria-label="商家入驻"></main>
+  <main v-else-if="isMerchantJoinPage" class="merchant-join-page" aria-label="商家指南">
+    <section class="merchant-guide-shell">
+      <aside class="merchant-guide-nav" aria-label="商家指南目录">
+        <div v-for="group in ['卖家指南', '常见问题']" :key="group" class="merchant-guide-group">
+          <h2>{{ group }}</h2>
+          <button v-for="guide in merchantGuides.filter((item) => item.group === group)" :key="guide.id" type="button" :class="{ active: activeMerchantGuide === guide.id }" @click="activeMerchantGuide = guide.id">{{ guide.label }}<BaseIcon v-if="activeMerchantGuide === guide.id" name="arrowRight" /></button>
+        </div>
+      </aside>
+      <article class="merchant-guide-article">
+        <header><p>商家指南</p><h1>{{ activeMerchantGuideContent.title }}</h1><time>更新日期：{{ activeMerchantGuideContent.updatedAt }}</time></header>
+        <p class="merchant-guide-intro">{{ activeMerchantGuideContent.intro }}</p>
+        <section v-for="(section, index) in activeMerchantGuideContent.sections" :key="section.title" class="merchant-guide-section"><h2>{{ index + 1 }}. {{ section.title }}</h2><p v-for="paragraph in section.paragraphs || []" :key="paragraph">{{ paragraph }}</p><ul v-if="section.list"><li v-for="item in section.list" :key="item">{{ item }}</li></ul></section>
+        <footer><BaseIcon name="shield" />本页内容用于帮助商家了解资料准备与信息展示要求，具体以平台规则和实际沟通为准。</footer>
+      </article>
+    </section>
+  </main>
   <main v-else-if="isStaticPage" class="catalog-page"><section class="catalog-wrap"><div class="catalog-crumb"><a href="#/">首页</a><span>/</span><strong>{{ new URLSearchParams(routeHash.split('?')[1] || '').get('title') || '平台说明' }}</strong></div><article class="detail-info-card"><h1>{{ new URLSearchParams(routeHash.split('?')[1] || '').get('title') || '平台说明' }}</h1><p>本页面为擎采云平台公开说明。平台当前提供商品浏览、店铺查询、询价、采购线索提交与本地采购清单功能；暂不提供在线支付、物流追踪、会员账户同步或自动报价服务。</p></article></section></main>
   <main v-else-if="isCatalogPage" class="catalog-page">
     <section class="catalog-hero">
@@ -1425,13 +1707,24 @@ const marketSections = computed(() => [
           <p>{{ product.raw?.serviceGuarantees?.includes('factory_audited') ? '已验厂企业' : '平台认证供应商' }} · 支持批量报价</p>
         </article>
       </div>
+      <nav v-if="catalogTotal > catalogPageSize" class="catalog-pagination" aria-label="搜索结果分页">
+        <p class="catalog-pagination-summary"><span>共找到</span><b>{{ catalogTotal }}</b><span>条匹配结果</span><i></i><em>第 {{ catalogPage }} / {{ catalogPageCount }} 页</em></p>
+        <div class="catalog-pagination-controls">
+          <button type="button" class="catalog-pagination-direction previous" :disabled="catalogPage === 1" aria-label="上一页" @click="setCatalogPage(catalogPage - 1)"><BaseIcon name="arrowRight" /></button>
+          <template v-for="item in catalogPaginationItems" :key="item">
+            <button v-if="typeof item === 'number'" type="button" :class="{ active: item === catalogPage }" :aria-current="item === catalogPage ? 'page' : undefined" :aria-label="`第 ${item} 页`" @click="setCatalogPage(item)">{{ item }}</button>
+            <span v-else class="catalog-pagination-ellipsis">…</span>
+          </template>
+          <button type="button" class="catalog-pagination-direction next" :disabled="catalogPage === catalogPageCount" aria-label="下一页" @click="setCatalogPage(catalogPage + 1)"><BaseIcon name="arrowRight" /></button>
+        </div>
+      </nav>
     </section>
   </main>
 
   <main v-else-if="isCompanyPage" class="company-page">
     <section class="company-wrap company-archive-wrap">
       <div class="company-crumb">
-        <a href="#/">首页</a><span>/</span><a href="#/catalog?category=机械设备">实力厂商</a><span>/</span><strong>{{ currentStoreSupplier.name }}</strong>
+        <a href="#/">首页</a><span>/</span><a href="#/catalog?type=company">实力厂商</a><span>/</span><strong>{{ currentStoreSupplier.name }}</strong>
       </div>
 
       <article class="company-archive-card">
@@ -1473,13 +1766,13 @@ const marketSections = computed(() => [
             <div class="company-archive-heading"><h2>工商信息</h2><span>企业信息已核验</span></div>
             <table class="company-business-table">
               <tbody>
-                <tr><th>企业名称</th><td>{{ currentStoreSupplier.name }}</td><th>注册资本</th><td>{{ companyBusinessInfo.registeredCapital ? `${companyBusinessInfo.registeredCapital} ${companyBusinessInfo.registeredCapitalCurrency || ''}` : '—' }}</td></tr>
+                <tr><th>企业名称</th><td>{{ currentStoreSupplier.name }}</td><th>注册资本</th><td>*******</td></tr>
                 <tr><th>注册地址</th><td>{{ companyBusinessInfo.registeredAddress || supplierLocation(currentStoreSupplier) || '—' }}</td><th>企业网址</th><td>{{ companyBusinessInfo.websiteUrl || '—' }}</td></tr>
                 <tr><th>营业执照</th><td>{{ companyVerification.subjectVerified ? '平台已核验' : '待核验' }}</td><th>统一社会信用代码</th><td>{{ companyBusinessInfo.unifiedSocialCreditCodeMasked || '—' }}</td></tr>
                 <tr><th>组织机构代码</th><td>{{ companyBusinessInfo.organizationCode || '—' }}</td><th>纳税人识别号</th><td>{{ companyBusinessInfo.taxpayerId || '—' }}</td></tr>
-                <tr><th>工商注册号</th><td>{{ companyBusinessInfo.registrationNumber || '—' }}</td><th>法定代表人</th><td>{{ companyBusinessInfo.legalRepresentative || '—' }}</td></tr>
-                <tr><th>经营状态</th><td>{{ displayCode(companyBusinessInfo.businessStatus) }}</td><th>成立时间</th><td>{{ companyBusinessInfo.establishedAt || '—' }}</td></tr>
-                <tr><th>营业期限</th><td>{{ companyBusinessInfo.businessTermEnd || companyBusinessInfo.businessTermStart || '长期' }}</td><th>核验日期</th><td>{{ companyVerification.verifiedAt || '—' }}</td></tr>
+                <tr><th>工商注册号</th><td>{{ companyBusinessInfo.registrationNumber || '—' }}</td><th>法定代表人</th><td>{{ maskLegalRepresentative(companyBusinessInfo.legalRepresentative) }}</td></tr>
+                <tr><th>经营状态</th><td>{{ displayCode(companyBusinessInfo.businessStatus) }}</td><th>成立时间</th><td>{{ formatBusinessDate(companyBusinessInfo.establishedAt) }}</td></tr>
+                <tr><th>营业期限</th><td>{{ formatBusinessDate(companyBusinessInfo.businessTermEnd || companyBusinessInfo.businessTermStart, '长期') }}</td><th>核验日期</th><td>—</td></tr>
                 <tr><th>企业类型</th><td>{{ displayCode(companyBusinessInfo.companyType) }}</td><th>所属行业</th><td>{{ currentStoreSupplier.category || '—' }}</td></tr>
                 <tr><th>经营范围</th><td colspan="3">{{ companyBusinessInfo.businessScope || '—' }}</td></tr>
                 <tr><th>登记机关</th><td colspan="3">{{ companyBusinessInfo.registrationAuthority || '—' }}</td></tr>
@@ -1495,7 +1788,7 @@ const marketSections = computed(() => [
   <main v-else class="detail-page">
     <section class="detail-wrap">
       <div class="detail-crumb">
-        <a href="#/">首页</a><span>/</span><a href="#/catalog?category=机械设备">机械设备</a><span>/</span><strong>{{ detailProduct.name }}</strong>
+        <a href="#/">首页</a><span>/</span><a :href="categoryHref(detailProduct.raw?.categoryId)">{{ detailProduct.raw?.categoryName || '商品分类' }}</a><span>/</span><strong>{{ detailProduct.name }}</strong>
       </div>
 
       <div class="detail-summary-layout">
@@ -1526,7 +1819,7 @@ const marketSections = computed(() => [
             <div><dt>服务保障</dt><dd><span v-for="tag in detailServiceTags" :key="tag">{{ tag }}</span></dd></div>
             <div><dt>发货地</dt><dd>{{ detailProduct.location || '—' }}　{{ detailProduct.raw?.shipWithinHours ? `预计 ${detailProduct.raw.shipWithinHours} 小时内发货` : '交付时间以沟通为准' }}</dd></div>
             <div><dt>规格选择</dt><dd class="detail-specs"><button v-for="spec in detailSpecs" :key="spec.id" type="button" :class="{ active: selectedSpec === spec.label }" @click="selectedSpec = spec.label">{{ spec.label }}</button></dd></div>
-            <div><dt>采购数量</dt><dd class="detail-quantity"><button type="button" @click="decreaseQuantity">−</button><input v-model.number="purchaseQuantity" :min="selectedSku?.minOrderQuantity || detailProduct.raw?.minOrderQuantity || 1" type="number" aria-label="采购数量" /><button type="button" @click="increaseQuantity">＋</button><span>{{ selectedSku?.minOrderQuantity || detailProduct.raw?.minOrderQuantity || 1 }} {{ detailProduct.raw?.unit || '件' }}起订</span></dd></div>
+            <div><dt>采购数量</dt><dd class="detail-quantity"><div class="detail-quantity-stepper"><button type="button" aria-label="减少数量" @click="decreaseQuantity">−</button><input v-model.number="purchaseQuantity" :min="selectedSku?.minOrderQuantity || detailProduct.raw?.minOrderQuantity || 1" type="number" aria-label="采购数量" /><button type="button" aria-label="增加数量" @click="increaseQuantity">＋</button></div><span class="detail-quantity-hint">{{ selectedSku?.minOrderQuantity || detailProduct.raw?.minOrderQuantity || 1 }} {{ detailProduct.raw?.unit || '件' }}起订</span></dd></div>
           </dl>
           <div class="detail-actions">
             <button type="button" class="detail-inquiry" @click="openQuoteDialog"><BaseIcon name="headset" />立即询价</button>
@@ -1680,8 +1973,8 @@ const marketSections = computed(() => [
         </div>
         <div>
           <h3>卖家服务</h3>
-          <a href="#/static?title=商家入驻">商家入驻</a>
-          <a href="#/static?title=入驻流程">入驻流程</a>
+          <a href="#/merchant-join">商家入驻</a>
+          <a href="#/merchant-join">入驻流程</a>
           <a href="#/static?title=商家服务">商家服务</a>
           <a href="#/static?title=商家中心">商家中心（暂未开放）</a>
         </div>
